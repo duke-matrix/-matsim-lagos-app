@@ -1,0 +1,68 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Java JDK 11
+      uses: actions/setup-java@v3
+      with:
+        java-version: '11'
+        distribution: 'temurin'
+        cache: 'maven'
+
+    - name: Build Java MATSim Core
+      run: |
+        cd java-matsim-core
+        mvn clean install
+
+    - name: Run Java JUnit tests
+      run: |
+        cd java-matsim-core
+        mvn test
+
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        cache: 'pip'
+        cache-dependency-path: 'python-api-dashboard/requirements.txt'
+
+    - name: Install Python dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r python-api-dashboard/requirements.txt
+
+    - name: Run Python tests
+      run: |
+        cd python-api-dashboard
+        pytest tests/
+
+    - name: Build Docker image
+      run: |
+        docker build -t matsim-lagos-app .
+
+    - name: Run Docker container and smoke test
+      run: |
+        docker run -d --name matsim-app -p 5000:5000 -p 8080:8080 matsim-lagos-app
+        sleep 10 # Give services time to start
+        # Example smoke test: check if the web dashboard is accessible
+        curl --fail http://localhost:5000 || exit 1
+        # Add more specific smoke tests if needed, e.g., for the Java component if it exposes an API
+
+    - name: Clean up Docker container
+      if: always()
+      run: docker rm -f matsim-app
+
